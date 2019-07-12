@@ -1,0 +1,152 @@
+---
+title: "1706_and_9553_network_analysis"
+date: "04252019"
+author: "Hokuto Nakayama""
+modified: "Min-Yao Jhu & Steven D. Rowland"
+---
+
+
+#load package
+```{r}
+#library(reshape)
+#library(RCy3)
+```
+
+
+#load data
+```{r}
+counts=read.csv ("t_only_all_4.csv", row.names=1)
+head(counts)
+dim(counts)
+```
+
+
+#remove 0
+```{r}
+counts <- counts[rowSums(counts) > 0,]
+dim(counts)
+```
+
+
+#add col/rownames
+```{r}
+samples=colnames(counts)
+genes=rownames(counts)
+```
+
+
+#check histogram
+```{r}
+Y.u=t(log(counts+(1e-6)))
+par(mfrow=c(2,1))
+hist(as.matrix(counts), breaks=50, main="normalized counts")
+hist(as.vector(Y.u), breaks=50, main="logarithm of the normalized counts")
+par(mfrow=c(1,1))
+```
+
+
+#calcurate corr
+```{r}
+corr.u=cor(Y.u)
+dim(corr.u)
+corr.s=cor(Y.u, method="spearman")
+hist(corr.s[upper.tri(corr.s)])
+```
+
+
+#fisher's Z transformation
+```{r}
+n=ncol(counts)      ### NOTE: this is your sample size (library#)
+z.s=0.5*log((1+corr.s)/(1-corr.s))
+summary(z.s[upper.tri(z.s)])
+hist(z.s[upper.tri(z.s)])
+```
+
+
+#cut off
+```{r}
+thre.z=qnorm(0.945)  ## normal quanitle
+adjcent.z=abs(z.s)>thre.z  ## symmetric ajacency matrix: 1: there is an edge; 0 : there is no edge
+diag(adjcent.z)=0  ## genes do not connect themselves in the network
+rownames(adjcent.z)=rownames(corr.u)
+colnames(adjcent.z)=colnames(corr.u)
+sum(adjcent.z)/2
+```
+
+
+#save the data
+```{r}
+write.csv(adjcent.z, "t_only_all_4_0.945output.csv")
+```
+
+
+#calcurate commun
+```{r}
+index=rowSums(adjcent.z)>0
+weight.adjcent.z=adjcent.z[index,index]
+library(igraph)
+g.temp=graph.adjacency(weight.adjcent.z, mode="undirected", diag=FALSE)
+
+community.fastgreedy=fastgreedy.community(g.temp)
+community.fastgreedy
+
+table(community.fastgreedy$membership)
+```
+
+
+#betweenness
+```{r}
+hist(betweenness(g.temp))
+b <- betweenness(g.temp, normalized=TRUE)
+```
+
+
+#edge#
+```{r}
+df.z.g=rowSums(weight.adjcent.z)
+hub <- df.z.g
+```
+
+
+#commu#
+```{r}
+c <- community.fastgreedy$membership
+```
+
+
+#save the data
+```{r}
+key <- cbind(b, hub, c)
+write.csv(data.frame(key),"t_only_all_4_0.945key.genes.csv")
+```
+
+
+#visualization
+```{r}
+V(g.temp)$color <- "gray57"
+for(i in 1:length(unique(community.fastgreedy$membership))){
+  V(g.temp)[community.fastgreedy$membership==i]$color=i
+ 
+  if(length(which(community.fastgreedy$membership==i))<7){
+    V(g.temp)[community.fastgreedy$membership==i]$color="grey"
+  }
+}
+V(g.temp)[df.z.g>20]$color <- "darkred" # You may also want to play around with hub gene thresholds
+v.label=rep("",length(V(g.temp)))
+v.label=V(g.temp)$name  # if you want to put gene name
+v.size=rep(5,length(V(g.temp)))
+# v.size[V(g.temp)$name %in% "AP2"]=4 # if you want to change size of specific nodes
+V(g.temp)$shape <- "circle"
+pdf("t_only_all_4_0.945_GCN.pdf", useDingbats=FALSE)
+plot(g.temp, layout=layout.kamada.kawai(g.temp), vertex.size=v.size, vertex.frame.color=NA,vertex.label=v.label, vertex.label.cex=0.05,edge.color="gray57", edge.width =0.2)
+dev.off()
+```
+
+
+```{r}
+
+#write.graph(g.temp,"1706c_9553c_9492c_9775c_updated.91-20.gml","gml")
+#createNetworkFromIgraph(g.temp,"t_only_all_4_0.945")
+```
+
+
